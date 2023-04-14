@@ -1,0 +1,51 @@
+{
+    "Comment": "A description of my state machine",
+    "StartAt": "Dynamodb_Job_Delete",
+    "States": {
+      "Dynamodb_Job_Delete": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "${GLUE_JOB_NAME}"
+        },
+        "Next": "JobStatus_Check",
+        "Comment": "Kick start the GlueJob with the Parameters passed."
+      },
+      "JobStatus_Check": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.Error",
+            "IsPresent": true,
+            "Next": "Failure_Notify"
+          },
+          {
+            "Not": {
+              "Variable": "$.Error",
+              "IsPresent": true
+            },
+            "Next": "Dynamodb_Job_Success"
+          }
+        ]
+      },
+      "Failure_Notify": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+            "Message.$": "$$.Execution.Id",
+            "TopicArn": "${SNS_TOPIC_NAME}",
+            "Subject": "Dynamodb Delete Execution Failed"
+        },
+        "Next": "Dynamodb_Job_Failed"
+      },
+      "Dynamodb_Job_Failed": {
+        "Type": "Fail",
+        "Error": "Dynamodb Table Deletion Failed",
+        "Cause": "Check the Glue Job logs for more information"
+      },
+      "Dynamodb_Job_Success": {
+        "Type": "Pass",
+        "End": true
+      }
+    }
+  }

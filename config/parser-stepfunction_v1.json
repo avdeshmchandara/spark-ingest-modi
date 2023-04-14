@@ -1,0 +1,67 @@
+{
+    "StartAt": "Parser_Glue_Job",
+    "States": {
+      "Parser_Glue_Job": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "${GLUE_JOB_NAME}"
+        },
+        "Next": "Parser_Job_Status",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "Parser_Job_Status"
+          }
+        ],
+        "OutputPath": "$"
+      },
+      "Parser_Job_Status": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.Error",
+            "IsPresent": true,
+            "Next": "Parser_Failure_Notify"
+          },
+          {
+            "Not": {
+              "Variable": "$.Error",
+              "IsPresent": true
+            },
+            "Next": "Parser_Success_Notify"
+          }
+        ]
+      },
+      "Parser_Failure_Notify": {
+        "Next": "Fail_Parser",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message.$": "$$.Execution.Id",
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "Parser Execution Failed"
+        }
+      },
+      "Fail_Parser": {
+        "Type": "Fail"
+      },
+      "Parser_Success_Notify": {
+        "Next": "Success_Parser",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message.$": "$$.Execution.Id",
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "Parser Execution Succeeded"
+        }
+      },
+      "Success_Parser": {
+        "Type": "Pass",
+        "End": true
+      }
+    },
+    "Comment": "Triggers Datamesh Parser Job"
+  }

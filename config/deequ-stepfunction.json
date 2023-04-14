@@ -1,0 +1,61 @@
+{
+    "StartAt": "Deequ_Glue_Job",
+    "States": {
+      "Deequ_Glue_Job": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "${GLUE_JOB_NAME}"
+        },
+        "Next": "Deequ_Job_Status",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "Deequ_Job_Status"
+          }
+        ],
+        "OutputPath": "$"
+      },
+      "Deequ_Job_Status": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.JobRunState",
+            "StringEquals": "SUCCEEDED",
+            "Next": "Deequ_Success_Notify"
+          }
+        ],
+        "Default": "Deequ_Failure_Notify"
+      },
+      "Deequ_Failure_Notify": {
+        "Next": "Fail_Deequ",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message.$": "$$.Execution.Id",
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "Deequ Run Failed"
+        }
+      },
+      "Fail_Deequ": {
+        "Type": "Fail"
+      },
+      "Deequ_Success_Notify": {
+        "Next": "Success_Deequ",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message.$": "$$.Execution.Id",
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "Deequ Run Succeeded"
+        }
+      },
+      "Success_Deequ": {
+        "Type": "Pass",
+        "End": true
+      }
+    },
+    "Comment": "Triggers Deequ for all application pipelines"
+  }

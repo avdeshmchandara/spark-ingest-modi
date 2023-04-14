@@ -1,0 +1,67 @@
+{
+    "StartAt": "Collibra_Processed_Glue_Job",
+    "States": {
+      "Collibra_Processed_Glue_Job": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "${GLUE_JOB_NAME}"
+        },
+        "Next": "Collibra_Processed_Job_Status",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "Collibra_Processed_Job_Status"
+          }
+        ],
+        "OutputPath": "$"
+      },
+      "Collibra_Processed_Job_Status": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.Error",
+            "IsPresent": true,
+            "Next": "Collibra_Processed_Failure_Notify"
+          },
+          {
+            "Not": {
+              "Variable": "$.Error",
+              "IsPresent": true
+            },
+            "Next": "Collibra_Processed_Success_Notify"
+          }
+        ]
+      },
+      "Collibra_Processed_Failure_Notify": {
+        "Next": "Fail_Collibra_Processed",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message.$": "$$.Execution.Id",
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "Collibra Processed Execution Failed"
+        }
+      },
+      "Fail_Collibra_Processed": {
+        "Type": "Fail"
+      },
+      "Collibra_Processed_Success_Notify": {
+        "Next": "Success_Collibra_Processed",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message.$": "$$.Execution.Id",
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "Collibra Processed Execution Succeeded"
+        }
+      },
+      "Success_Collibra_Processed": {
+        "Type": "Pass",
+        "End": true
+      }
+    },
+    "Comment": "Triggers Datamesh Collibra Processed Job"
+  }

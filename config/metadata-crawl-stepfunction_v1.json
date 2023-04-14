@@ -1,0 +1,199 @@
+{
+    "StartAt": "Run_DynamodbMetadataCrawler",
+    "States": {
+      "Run_DynamodbMetadataCrawler": {
+        "Next": "Wait_For_DynamodbMetadataCrawler_Complete",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "datamesh_metadata_load_failure_notify"
+          }
+        ],
+        "Type": "Task",
+        "Parameters": {
+          "Name": "${METADATA_CRAWLER_NAME}"
+        },
+        "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+        "ResultPath": "$"
+      },
+      "Wait_For_DynamodbMetadataCrawler_Complete": {
+        "Type": "Wait",
+        "Seconds": 120,
+        "Next": "Get_RunStatus_DynamodbMetadataCrawler"
+      },
+      "Get_RunStatus_DynamodbMetadataCrawler": {
+        "Next": "Job_DynamodbMetadataCrawler_Complete?",
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "IntervalSeconds": 30,
+            "MaxAttempts": 3,
+            "BackoffRate": 2
+          }
+        ],
+        "Type": "Task",
+        "Parameters": {
+          "Name": "${METADATA_CRAWLER_NAME}"
+        },
+        "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+        "ResultPath": "$"
+      },
+      "Job_DynamodbMetadataCrawler_Complete?": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "And": [
+              {
+                "Not": {
+                  "Variable": "$.Crawler.State",
+                  "StringEquals": "RUNNING"
+                }
+              },
+              {
+                "Variable": "$.Crawler.LastCrawl.Status",
+                "StringEquals": "SUCCEEDED"
+              }
+            ],
+            "Next": "dynamodb_metadata_Glue_Job"
+          },
+          {
+            "Variable": "$.Crawler.State",
+            "StringEquals": "RUNNING",
+            "Next": "Wait_For_DynamodbMetadataCrawler_Complete"
+          }
+        ],
+        "Default": "datamesh_metadata_load_failure_notify"
+      },
+      "datamesh_metadata_load_failure_notify": {
+        "Next": "Fail_datamesh_metadata_job",
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "Message.$": "$",
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "Data Load Job Task Fail Notification DynamodbMetadataCrawler"
+        }
+      },
+      "Fail_datamesh_metadata_job": {
+        "Type": "Fail",
+        "Error": "DataMesh metadata Load Failed",
+        "Cause": "Check Glue Logs for more information"
+      },
+      "dynamodb_metadata_Glue_Job": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::glue:startJobRun.sync",
+        "Parameters": {
+          "JobName": "${GLUE_JOB_NAME}"
+        },
+        "Next": "dynamodb_metadata_Glue_Job_Status",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "dynamodb_metadata_Glue_Job_Status"
+          }
+        ],
+        "OutputPath": "$"
+      },
+      "dynamodb_metadata_Glue_Job_Status": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.Error",
+            "IsPresent": true,
+            "Next": "Run_S3MetadataCrawler"
+          },
+          {
+            "Not": {
+              "Variable": "$.Error",
+              "IsPresent": true
+            },
+            "Next": "datamesh_metadata_load_failure_notify"
+          }
+        ]
+      },
+      "Run_S3MetadataCrawler": {
+        "Next": "Wait_For_S3MetadataCrawler_Complete",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "Next": "datamesh_metadata_load_failure_notify"
+          }
+        ],
+        "Type": "Task",
+        "Parameters": {
+          "Name": "${S3_CRAWLER_NAME}"
+        },
+        "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+        "ResultPath": "$"
+      },
+      "Wait_For_S3MetadataCrawler_Complete": {
+        "Type": "Wait",
+        "Seconds": 120,
+        "Next": "Get_RunStatus_S3MetadataCrawler"
+      },
+      "Get_RunStatus_S3MetadataCrawler": {
+        "Next": "Job_S3MetadataCrawler_Complete?",
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "States.ALL"
+            ],
+            "IntervalSeconds": 30,
+            "MaxAttempts": 3,
+            "BackoffRate": 2
+          }
+        ],
+        "Type": "Task",
+        "Parameters": {
+          "Name": "${S3_CRAWLER_NAME}"
+        },
+        "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+        "ResultPath": "$"
+      },
+      "Job_S3MetadataCrawler_Complete?": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "And": [
+              {
+                "Not": {
+                  "Variable": "$.Crawler.State",
+                  "StringEquals": "RUNNING"
+                }
+              },
+              {
+                "Variable": "$.Crawler.LastCrawl.Status",
+                "StringEquals": "SUCCEEDED"
+              }
+            ],
+            "Next": "dynamodb_metadata_load_Success_Notify"
+          },
+          {
+            "Variable": "$.Crawler.State",
+            "StringEquals": "RUNNING",
+            "Next": "Wait_For_S3MetadataCrawler_Complete"
+          }
+        ],
+        "Default": "datamesh_metadata_load_failure_notify"
+      },
+      "dynamodb_metadata_load_Success_Notify": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::sns:publish",
+        "Parameters": {
+          "TopicArn": "${SNS_TOPIC_NAME}",
+          "Subject": "ESGScoring CDC Raw Data Load Succeeded",
+          "Message.$": "$"
+        },
+        "End": true
+      }
+    },
+    "Comment": "Triggers datamesh metadata Load Pipeline"
+  }
